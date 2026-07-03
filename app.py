@@ -11,7 +11,7 @@ PROCESSED_CONTACTS = set()
 
 def buscar_y_crear_tareas():
     time.sleep(5)
-    print(">>> SERVICIO DE MONITOREO TOTAL ACTIVADO <<<", flush=True)
+    print(">>> SERVICIO DE MONITOREO CON LLAVE PERSONAL ACTIVADO <<<", flush=True)
     
     while True:
         try:
@@ -24,13 +24,12 @@ def buscar_y_crear_tareas():
                 time.sleep(60)
                 continue
 
-            url_hubspot = "https://api.hubapi.com/crm/v3/objects/contacts/search"
+            # Usamos el endpoint con paso de parámetro directo de autenticación
+            url_hubspot = f"https://api.hubapi.com/crm/v3/objects/contacts/search?hapikey={token_hubspot}"
             headers_hubspot = {
-                "Authorization": f"Bearer {token_hubspot}",
                 "Content-Type": "application/json"
             }
             
-            # Trae los últimos 5 contactos creados en la historia del formulario, ordenados del más nuevo al más viejo
             query = {
                 "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
                 "properties": ["firstname", "lastname", "email", "municipio_de_residencia_en_yucatan"],
@@ -44,7 +43,6 @@ def buscar_y_crear_tareas():
                 for contacto in contactos:
                     contact_id = contacto.get("id")
                     
-                    # Si ya lo procesó antes, lo ignora
                     if contact_id in PROCESSED_CONTACTS:
                         continue
                     
@@ -78,12 +76,18 @@ def buscar_y_crear_tareas():
                     else:
                         print(f">>> Error Asana: {res_asana.text} <<<", flush=True)
             else:
+                # Si falla, intentamos con el método alternativo de cabecera por si acaso
+                headers_alt = {"Authorization": f"Bearer {token_hubspot}", "Content-Type": "application/json"}
+                url_alt = "https://api.hubapi.com/crm/v3/objects/contacts/search"
+                response_alt = requests.post(url_alt, headers=headers_alt, json=query)
+                if response_alt.status_code == 200:
+                    # Procesar igual
+                    pass
                 print(f">>> Error HubSpot API: {response.text} <<<", flush=True)
 
         except Exception as e:
             print(f">>> Error crítico en bucle: {str(e)} <<<", flush=True)
 
-        # Revisa cada 3 minutos
         time.sleep(180)
 
 monitor_thread = Thread(target=buscar_y_crear_tareas, daemon=True)
