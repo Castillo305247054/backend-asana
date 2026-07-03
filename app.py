@@ -6,14 +6,12 @@ from threading import Thread
 
 app = Flask(__name__)
 
-# Configuración inicial básica
+# Almacén en memoria para no duplicar tareas
 PROCESSED_CONTACTS = set()
 
 def buscar_y_crear_tareas():
-    """Función en segundo plano con manejo estricto de errores."""
-    # Esperar un momento a que el servidor principal esté completamente arriba
-    time.sleep(10)
-    print(">>> SERVICIO DE MONITOREO DE HUBSPOT ACTIVADO <<<", flush=True)
+    time.sleep(5)
+    print(">>> SERVICIO DE MONITOREO TOTAL ACTIVADO <<<", flush=True)
     
     while True:
         try:
@@ -22,7 +20,7 @@ def buscar_y_crear_tareas():
             project_id_asana = os.environ.get("ASANA_PROJECT_ID")
 
             if not token_hubspot or not token_asana or not project_id_asana:
-                print(">>> Error: Faltan variables de entorno en Render. Revisar configuración. <<<", flush=True)
+                print(">>> Error: Faltan variables de entorno en Render. <<<", flush=True)
                 time.sleep(60)
                 continue
 
@@ -32,21 +30,11 @@ def buscar_y_crear_tareas():
                 "Content-Type": "application/json"
             }
             
-            # Buscar contactos creados en los últimos 15 minutos
-            ahora_ms = int(time.time() * 1000)
-            hace_15_min_ms = ahora_ms - (15 * 60 * 1000)
-
+            # Trae los últimos 5 contactos creados en la historia del formulario, ordenados del más nuevo al más viejo
             query = {
-                "filterGroups": [{
-                    "filters": [{
-                        "propertyName": "createdate",
-                        "operator": "GT",
-                        "value": str(hace_15_min_ms)
-                    }]
-                }],
                 "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
                 "properties": ["firstname", "lastname", "email", "municipio_de_residencia_en_yucatan"],
-                "limit": 10
+                "limit": 5
             }
 
             response = requests.post(url_hubspot, headers=headers_hubspot, json=query)
@@ -55,6 +43,8 @@ def buscar_y_crear_tareas():
                 contactos = response.json().get("results", [])
                 for contacto in contactos:
                     contact_id = contacto.get("id")
+                    
+                    # Si ya lo procesó antes, lo ignora
                     if contact_id in PROCESSED_CONTACTS:
                         continue
                     
@@ -64,7 +54,7 @@ def buscar_y_crear_tareas():
                     correo = props.get("email", "Sin Correo")
                     municipio = props.get("municipio_de_residencia_en_yucatan", "No especificado")
                     
-                    print(f">>> Contacto detectado: {nombre} {apellido} ({municipio}) <<<", flush=True)
+                    print(f">>> Contacto encontrado: {nombre} {apellido} <<<", flush=True)
 
                     # Crear tarea en Asana
                     url_asana = "https://app.asana.com/api/1.0/tasks"
@@ -93,16 +83,15 @@ def buscar_y_crear_tareas():
         except Exception as e:
             print(f">>> Error crítico en bucle: {str(e)} <<<", flush=True)
 
-        # Revisa cada 5 minutos
-        time.sleep(300)
+        # Revisa cada 3 minutos
+        time.sleep(180)
 
-# Iniciar el hilo de fondo inmediatamente al importar el módulo
 monitor_thread = Thread(target=buscar_y_crear_tareas, daemon=True)
 monitor_thread.start()
 
 @app.route('/')
 def home():
-    return jsonify({"status": "active", "monitor": "running"}), 200
+    return jsonify({"status": "active"}), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
